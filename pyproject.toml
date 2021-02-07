@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "hsobot"
+version = "0.1.0"
+description = "A Setu Bot For Nonebot2"
+authors = ["kitUIN <kulujun@gmail.com>"]
+license = "MIT Lincense"
+
+[tool.poetry.dependencies]
+python = "^3.7"
+tinydb = "^4.2.0"
+nonebot2 = "^2.0.0a9.post1"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
