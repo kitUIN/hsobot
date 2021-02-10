@@ -1,19 +1,20 @@
-
 import random
 import re
-
+import nonebot
 import httpx
 from loguru import logger
 from tinydb import Query
-from .model import tag_db, status, group_config, friend_config
+from .model import tag_db, status, group_config, friend_config, Power
 from .config import Config
 from nonebot.adapters.cqhttp import MessageSegment, Message, Bot, Event
+
 # -------------------------------------------------------
 #                       Setu 类包装
 #                           鸣谢
 #       https://github.com/yuban10703/OPQ-SetuBot
 # -------------------------------------------------------
 # to do tag_db,status 用于统计
+db = Power()
 global_config = nonebot.get_driver().config
 hso_config = Config(**global_config.dict())  # 载入配置
 
@@ -21,24 +22,25 @@ Q = Query()
 
 
 class Setu:
-    def __init__(self, bot: Bot, event: Event, tag, num, r18, **requests_kwargs):
-        self.r18 = r18
-        self.num = num  # todo
+    def __init__(self, bot: Bot, event: Event, state: dict, **requests_kwargs):
+        self.r18 = state['_matched_groups'][2]
+        self.num = state['_matched_groups'][0]
         self._REQUESTS_KWARGS = requests_kwargs
-        self.tag: list = [i for i in list(set(re.split(r",|，|\.|-| |_|/|\\", tag))) if i != ""]  # 分割tag+去重+去除空元素
+        self.tag: list = [i for i in list(set(re.split(r",|，|\.|-| |_|/|\\", state['_matched_groups'][1]))) if
+                          i != ""]  # 分割tag+去重+去除空元素
         # -----------------------------------
-        self.api_request = num
         self.bot = bot
         self.event = event
         self.config = hso_config  # 全局设置
         self.message = event.dict()
         self.type = self.message["message_type"]
         self.setu_level = 1  # 默认涩图等级
-        self.current_config = None  # 当然配置
+        self.current_config = None  # 当前配置
 
     async def send(self, file: str = "", msg: MessageSegment = MessageSegment.text("")):  # 发送图片或文字
-        if file[1:4] != "http" and file[1:4] != "":  # 本地文件
-            file = "file:///" + file
+        logger.info(file)
+        # if file[1:4] != "http" and file[1:4] != "":  # 本地文件
+        #    file = "file:///" + file
         await self.bot.send(event=self.event, message=Message([MessageSegment.image(file=file), msg]))
 
     async def build_msg(self,
@@ -49,24 +51,24 @@ class Setu:
                         author_id="",
                         url="",
                         url_original=""):  # 构建消息
-        if api == 0:  # yande.re
+        if api == 0:  # yuban and lolicon.app
+            msg = "标题:{title}\r\n作者:{author}\r\n[www.pixiv.net/users/{author_id}]\r\n作品id:{id}\r\n" \
+                  "[www.pixiv.net/artworks/{id}]\r\n原图:{url_original}".format(title=title, id=uid, url=url,
+                                                                              author_id=author_id, author=author,
+                                                                              url_original=url_original)
+        elif api == 1:  # yande.re
             msg = "标题:{title}\r\n作者:{author}\r\n原图:{url_original}\r\n(需要科学上网)".format(
                 title=title,
                 author=author,
                 url_original=url_original
             )
-        elif api == 1:  # yuban and lolicon.app
-            msg = "标题:{title}\r\n作者:{author}\r\n[www.pixiv.net/users/{author_id}]\r\n作品id:{id}\r\n" \
-                  "[www.pixiv.net/artworks/{id}]\r\n原图:{url_original}".format(title=title, id=uid, url=url,
-                                                                              author_id=author_id, author=author,
-                                                                              url_original=url_original)
         else:
             msg = "msg配置错误,请联系管理员"
             return MessageSegment.text(msg)
 
-        if self.current_config["revoke"]:  # 群聊并且开启撤回
-            msg += "\r\nREVOKE[{}]".format(self.current_config["revoke"])
-        if self.current_config["at"]:
+        if self.current_config[self.type]["revoke"]:  # 群聊并且开启撤回
+            msg += "\r\nREVOKE[{}]".format(self.current_config[self.type]["revoke"])
+        if self.current_config[self.type]["at"]:
             return [MessageSegment.at(self.event.dict()["user_id"]), MessageSegment.text(msg)]
         return MessageSegment.text(msg)
 
@@ -74,19 +76,22 @@ class Setu:
         if not self.config.api0 or self.num < 1:
             return
         get_num = 0
+        tag = ""
         url = "http://api.yuban10703.xyz:2333/setu_v4"
+        if self.tag:
+            tag = self.tag
         params = {"level": self.setu_level,
                   "num": self.num,
-                  "tag": self.tag[0]}
+                  "tag": tag}
         try:
             async with httpx.AsyncClient() as client:
-                res = await client.get(url, params, timeout=5)
+                res = await client.get(url, params=params, timeout=5)
                 setu_data = res.json()
         except Exception as e:
             logger.warning("api0 boom~ :{}".format(e))
         else:
             if res.status_code == 200:
-                async for data in setu_data["data"]:
+                for data in setu_data["data"]:
                     url_original = data["original"].replace("i.pximg.net", "i.pixiv.cat")  # 原图链接
                     url_large = data["large"].replace("i.pximg.net", "i.pixiv.cat")  # 高清链接
                     msg = await self.build_msg(api=0, title=data["title"], author=data["author"], uid=data["artwork"],
@@ -96,6 +101,7 @@ class Setu:
                     else:
                         await self.send(file=url_large, msg=msg)
                     get_num += 1
+                    self.num -= 1
             # 打印获取到多少条
             logger.info("从yubanのapi获取到{}张关于{}的setu  实际发送{}张".format(setu_data["count"], self.tag, get_num))
 
@@ -122,19 +128,20 @@ class Setu:
             params["keyword"] = self.tag
         try:
             async with httpx.AsyncClient() as client:
-                res = await client.get(url, params, timeout=5)
+                res = await client.get(url, params=params, timeout=5)
                 setu_data = res.json()
         except Exception as e:
             logger.warning("api1 boom~ :{}".format(e))
         else:
             if res.status_code == 200:
-                async for data in setu_data["data"]:
+                for data in setu_data["data"]:
                     msg = await self.build_msg(api=1, title=data["title"], uid=data["pid"], author=data["author"],
                                                author_id=data["uid"],
                                                url_original="https://i.pixiv.cat/img-original/img/{}".format(
                                                    re.findall("img/(.*)", data["url"])[0].replace("_master1200", "")))
-                    await self.send(file=data["url"][0], msg=msg)
+                    await self.send(file=data["url"], msg=msg)
                     get_num += 1
+                    self.num -= 1
                 logger.info(
                     "从loliconのapi获取到{}张关于{}的Setu  实际发送{}张".format(setu_data["count"], self.tag, get_num))  # 打印获取到多少条
             else:
@@ -202,7 +209,7 @@ class Setu:
             try:
                 self.num = int(self.num)
             except ValueError:  # 出错就说明不是数字
-                await self.send(msg=MessageSegment.text("不会真的有人连数数字都不会吧！"))
+                await self.send(msg=MessageSegment.text("不会真的有人连数数字都不会输入吧！"))
                 return
             if self.num <= 0:  # ?????
                 await self.send(msg=MessageSegment.text("你想笑死我好继承我的负产吗¿¿¿"))
@@ -212,11 +219,9 @@ class Setu:
         # -----------------------------------------------
         if self.type in ["group", "temp"]:
             if not self.current_config[self.type]["setu"]:
-                await self.send(msg=MessageSegment.text("啊嘞啊嘞，涩图还没开呢~"))
-                return
-            if self.num > self.current_config[self.type]["mux_num"]:
-                await self.send(msg=MessageSegment.text("要这么多涩图你怎么不冲死呢¿"))
-                return
+                return await self.send(msg=MessageSegment.text("啊嘞啊嘞，涩图还没开呢~"))
+            if self.num > self.current_config[self.type]["max_num"]:
+                return await self.send(msg=MessageSegment.text("要这么多涩图你怎么不冲死呢¿"))
             if self.r18:
                 self.setu_level = self.current_config[self.type]["setu_level"]
                 if self.setu_level < 2:
@@ -227,18 +232,20 @@ class Setu:
                 self.setu_level = 2
             if self.current_config[self.type]["setu_level"] is vars():
                 self.setu_level = self.current_config[self.type]["setu_level"]
-        await self.send()
+
+        await self.action()
         # todo 总设置
 
     async def main(self):  # 判断消息类型给对应函数处理
         if self.type != "private":  # 群聊or临时会话
-            data = await group_config.search(Q["GroupId"] == self.message["group_id"])  # 全局数据库
+            data = group_config.search(Q["group_id"] == self.message["group_id"])[0]  # 数据库
             if data:  # 查询group数据库数据
                 self.current_config = data
-                await self.processing_and_inspect()
             else:
-                await self.send(msg=MessageSegment.text("数据库无群:{}信息,请联系管理员~".format(self.message["group_id"])))
-                return
+                await db.group_build(self.message["group_id"])
+                self.current_config = group_config.search(Q["group_id"] == self.message["group_id"])[0]
+                logger.info(self.current_config)
+            await self.processing_and_inspect()
         else:  # 好友会话
             data = friend_config.search(Q["user_id"] == self.message["user_id"])
             if data:  # 该QQ如果自定义过
@@ -248,9 +255,9 @@ class Setu:
 
     async def action(self):  # 判断数量
         for i in self.config.priority:
-            if getattr(self, "api{}".format(i)):
+            if getattr(self.config, "api{}".format(i)):
                 t = eval("self.api_{}".format(i))
-                t()
+                await t()
         if self.num != 0:
             await self.send(msg=MessageSegment.text('淦！你的xp好奇怪啊！'))
             return

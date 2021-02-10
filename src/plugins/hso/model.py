@@ -1,4 +1,3 @@
-
 import json
 import pathlib
 import sys
@@ -8,6 +7,7 @@ import httpx
 from loguru import logger
 from tinydb import TinyDB, Query
 from tinydb.storages import MemoryStorage
+
 # ---------
 # 公用数据库
 # ---------
@@ -32,21 +32,6 @@ class Send:
             res = await client.post(self.url + "get_group_member_list", params={"group_id": group_id})
             return res.json()["data"]
 
-    async def send_msg(self, message_typ: str = None,
-                       user_id: int = None,
-                       group_id: int = None,
-                       message=None,
-                       auto_escape: bool = False):  # 发送消息
-        async with httpx.AsyncClient() as client:
-            res = await client.post(self.url + "send_msg",
-                                    params={
-                                        "message_typ": message_typ,
-                                        "user_id": user_id,
-                                        "group_id": group_id,
-                                        "message": message,
-                                        "auto_escape": auto_escape})
-            return res.json()
-
 
 Q = Query()
 send = Send()
@@ -54,46 +39,68 @@ send = Send()
 
 class Power:
     @staticmethod
-    def _default_data(config=None):
-        data = {"setu_level": {"group": 1, "temp": 3}, "original": {"group": False, "temp": False},
-                "setu": {"group": False, "temp": True}, "r18": {"group": False, "temp": True},
-                "max_num": {"group": 3, "temp": 3}, "revoke": {"group": 20, "temp": 0}, "at": False}
+    def _default_data():
+        """
+        setu_level默认等级 0:正常 1:性感 2:色情 3:All
+        original   是否原图
+        setu  色图功能开关
+        r18 是否开启r18
+        max_num 一次最多数量
+        revoke 撤回消息延时(0为不撤回)"""
+        data = {
+            "group": {"setu_level": 1,
+                      "original": False,
+                      "setu": False,
+                      "r18": False,
+                      "max_num": 3,
+                      "revoke": 20,
+                      "at": False},
+            "temp": {"setu_level": 3,
+                     "original": False,
+                     "setu": True,
+                     "r18": True,
+                     "max_num": 3,
+                     "revoke": 20,
+                     "at": False}}
         # -----------------------------------------------------
-        if config:
-            data["setu_level"] = config.setu_level
-            data["original"] = config.original
-            data["setu"] = config.setu
-            data["r18"] = config.r18
-            data["max_num"] = config.max_num
-            data["revoke"] = config.revoke
-            data["at"] = config.at
         return data
 
-    async def _update_data(self, data, group_id):
-        if await group_config.search(Q["GroupId"] == group_id):
+    async def _update_data(self, group_id, data=None):
+        if group_config.search(Q["GroupId"] == group_id):
             logger.info('群:{}已存在,更新数据~'.format(group_id))
-            await group_config.update(data, Q['GroupId'] == group_id)
+            group_config.update(data, Q['GroupId'] == group_id)
         else:
-            default = self._default_data(data)
+            default = self._default_data()
+            if data:
+                default.update(data)
             logger.info("群:{}不存在,插入数据~".format(group_id))
-            await group_config.insert(default)
+            group_config.insert(default)
+
+
+
+    async def group_build(self, group_id):
+        admin = list()
+        owner = 0
+        group = dict()
+        # data = group_config.search(Q["GroupId"] == group_id)
+        # if data:
+        #    group = data
+        member = await send.get_group_member_list(group_id)
+        for i in member:
+            if i["role"] == "admin":
+                admin.append(i["user_id"])
+            elif i["role"] == "owner":
+                owner = i["user_id"]
+        group["admins"] = admin  # 管理员列表 等级2
+        group["owner"] = owner  # 群主 等级 1
+        group["group_id"] = group_id
+        await self._update_data(group_id, group)  # 更新配置
 
     async def update_all(self):
         logger.info("开始更新所有群数据~")
         data = await send.get_group_list()
         group_ids = [await x["group_id"] async for x in data]
         for group_id in group_ids:
-            admin = list()
-            owner = 0
-            group = dict()
-            member = await send.get_group_member_list(group_id)
-            async for i in member:
-                if i["role"] == "admin":
-                    admin.append(i["user_id"])
-                elif i["role"] == "owner":
-                    owner = await i["user_id"]
-            group["admins"] = admin  # 管理员列表 等级2
-            group["owner"] = owner  # 群主 等级 1
-            await self._update_data(group, group_id)  # 更新配置
+            await self.group_build(group_id)
         logger.success("更新群信息成功~")
         return

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import base64
 import pathlib
@@ -5,25 +6,25 @@ import sys
 import time
 
 import nonebot
-from nonebot import on_message
+from nonebot import on_message, on_regex
 from nonebot.adapters.cqhttp import Bot, Event, Message, MessageSegment
 from loguru import logger
+from nonebot import on_command
+from .data_source import Setu
 from .config import Config
-from nonebot.rule import to_me
+from nonebot.rule import to_me, regex
 from nonebot.permission import Permission
+
 # -----------
 # 事件响应
 # -----------
-global_config = nonebot.get_driver().config
-plugin_config = Config(**global_config.dict())
-logger.info(plugin_config)
 try:
     pathlib.Path("db").mkdir()
     logger.success("数据库创建成功")
 except FileExistsError:
     logger.info("数据库目录已存在")
 # -----------------------------------------------------------------
-setu = on_message()
+setu = on_regex(pattern='来(.*?)[点丶份张幅](.*?)的?(|r18)[色瑟涩🐍][图圖🤮]')
 
 
 async def withdraw(bot: Bot, event: Event, state: dict):  # 撤回
@@ -35,13 +36,7 @@ async def message_receive(bot: Bot, event: Event, state: dict):  # 涩图调用
     logger.info(bot.__dict__)
     logger.info(event.dict())
     logger.info(state)
-
-    if event.dict()['user_id'] == 1585447424:
-        await bot.send_private_msg(user_id=1585447424, message=Message(MessageSegment.text('1')))
-        logger.info(time.time())
-        image = MessageSegment.image(file=r'file:///C:\\Users\kuluj\Pictures\51607192_p0.jpg')
-        msg = Message([image, MessageSegment.text('')])
-        await bot.send_private_msg(user_id=1585447424, message=msg)
+    await Setu(bot, event, state).main()
 
 
 # -----------------------------------------------------------------
