@@ -151,7 +151,7 @@ class Setu:
                 logger.warning("api1:{}".format(res.status_code))
 
     """
-    def api_2(self):  # https://yande.re/ 需要梯子速度极其慢，不建议使用
+    def api_2(self):  # https://yande.re/ 需要梯子速度极其慢，不建议使用,异步用法未写
         url = "https://yande.re/post.json"
         if config["proxies"]:
             _REQUESTS_KWARGS = {
