@@ -1,12 +1,15 @@
+import asyncio
 import random
 import re
-import nonebot
+
 import httpx
+import nonebot
 from loguru import logger
-from tinydb import Query
-from .model import tag_db, status, group_config, friend_config, Power
-from .config import Config
 from nonebot.adapters.cqhttp import MessageSegment, Message, Bot, Event
+from tinydb import Query
+
+from .config import Config
+from .model import group_config, friend_config, Power
 
 # -------------------------------------------------------
 #                       Setu 类包装
@@ -14,19 +17,18 @@ from nonebot.adapters.cqhttp import MessageSegment, Message, Bot, Event
 #       https://github.com/yuban10703/OPQ-SetuBot
 # -------------------------------------------------------
 # to do tag_db,status 用于统计
-db = Power()
 global_config = nonebot.get_driver().config
 hso_config = Config(**global_config.dict())  # 载入配置
-
+logger.info(hso_config)
 Q = Query()
 
 
 class Setu:
     def __init__(self, bot: Bot, event: Event, state: dict, **requests_kwargs):
-        self.r18 = state['_matched_groups'][2]
-        self.num = state['_matched_groups'][0]
+        self.r18 = state["_matched_groups"][2]
+        self.num = state["_matched_groups"][0]
         self._REQUESTS_KWARGS = requests_kwargs
-        self.tag: list = [i for i in list(set(re.split(r",|，|\.|-| |_|/|\\", state['_matched_groups'][1]))) if
+        self.tag: list = [i for i in list(set(re.split(r",|，|\.|-| |_|/|\\", state["_matched_groups"][1]))) if
                           i != ""]  # 分割tag+去重+去除空元素
         # -----------------------------------
         self.bot = bot
@@ -36,12 +38,11 @@ class Setu:
         self.type = self.message["message_type"]
         self.setu_level = 1  # 默认涩图等级
         self.current_config = None  # 当前配置
+        self.power = Power(bot, event)
 
-    async def send(self, file: str = "", msg: MessageSegment = MessageSegment.text("")):  # 发送图片或文字
-        logger.info(file)
-        # if file[1:4] != "http" and file[1:4] != "":  # 本地文件
-        #    file = "file:///" + file
-        await self.bot.send(event=self.event, message=Message([MessageSegment.image(file=file), msg]))
+    async def withdraw(self, id):
+        await asyncio.sleep(30)
+        await self.bot.delete_msg(message_id=id)
 
     async def build_msg(self,
                         api: int = -1,
@@ -53,24 +54,18 @@ class Setu:
                         url_original=""):  # 构建消息
         if api == 0:  # yuban and lolicon.app
             msg = "标题:{title}\r\n作者:{author}\r\n[www.pixiv.net/users/{author_id}]\r\n作品id:{id}\r\n" \
-                  "[www.pixiv.net/artworks/{id}]\r\n原图:{url_original}".format(title=title, id=uid, url=url,
+                  "[www.pixiv.net/artworks/{id}]\r\n原图:{url_original}\r\n".format(title=title, id=uid, url=url,
                                                                               author_id=author_id, author=author,
                                                                               url_original=url_original)
         elif api == 1:  # yande.re
-            msg = "标题:{title}\r\n作者:{author}\r\n原图:{url_original}\r\n(需要科学上网)".format(
+            msg = "标题:{title}\r\n作者:{author}\r\n原图:{url_original}\r\n(需要科学上网)\r\n".format(
                 title=title,
                 author=author,
                 url_original=url_original
             )
         else:
             msg = "msg配置错误,请联系管理员"
-            return MessageSegment.text(msg)
-
-        if self.current_config[self.type]["revoke"]:  # 群聊并且开启撤回
-            msg += "\r\nREVOKE[{}]".format(self.current_config[self.type]["revoke"])
-        if self.current_config[self.type]["at"]:
-            return [MessageSegment.at(self.event.dict()["user_id"]), MessageSegment.text(msg)]
-        return MessageSegment.text(msg)
+        return msg
 
     async def api_0(self):  # https://github.com/yuban10703
         if not self.config.api0 or self.num < 1:
@@ -96,12 +91,18 @@ class Setu:
                     url_large = data["large"].replace("i.pximg.net", "i.pixiv.cat")  # 高清链接
                     msg = await self.build_msg(api=0, title=data["title"], author=data["author"], uid=data["artwork"],
                                                author_id=data["artist"], url_original=url_original)  # 组装消息
-                    if self.current_config[self.type]["original"]:  # 是否发送原图
-                        await self.send(file=url_original, msg=msg)
+                    if self.current_config[self.type]["at"]:
+                        at = True
                     else:
-                        await self.send(file=url_large, msg=msg)
+                        at = False
+                    if self.current_config[self.type]["original"]:  # 是否发送原图
+                        id = await self.power.send(file=url_original, msg=msg,at=at)
+                    else:
+                        id = await self.power.send(file=url_large, msg=msg,at=at)
                     get_num += 1
                     self.num -= 1
+                    if self.current_config[self.type]["revoke"]:
+                        await self.withdraw(id=id['message_id'])
             # 打印获取到多少条
             logger.info("从yubanのapi获取到{}张关于{}的setu  实际发送{}张".format(setu_data["count"], self.tag, get_num))
 
@@ -139,9 +140,11 @@ class Setu:
                                                author_id=data["uid"],
                                                url_original="https://i.pixiv.cat/img-original/img/{}".format(
                                                    re.findall("img/(.*)", data["url"])[0].replace("_master1200", "")))
-                    await self.send(file=data["url"], msg=msg)
+                    id = await self.power.send(file=data["url"], msg=msg)
                     get_num += 1
                     self.num -= 1
+                    if self.current_config[self.type]["revoke"]:
+                        await self.withdraw(id=id)
                 logger.info(
                     "从loliconのapi获取到{}张关于{}的Setu  实际发送{}张".format(setu_data["count"], self.tag, get_num))  # 打印获取到多少条
             else:
@@ -209,32 +212,31 @@ class Setu:
             try:
                 self.num = int(self.num)
             except ValueError:  # 出错就说明不是数字
-                await self.send(msg=MessageSegment.text("不会真的有人连数数字都不会输入吧！"))
+                await self.power.send(msg="不会真的有人连数数字都不会输入吧！")
                 return
             if self.num <= 0:  # ?????
-                await self.send(msg=MessageSegment.text("你想笑死我好继承我的负产吗¿¿¿"))
+                await self.power.send(msg="你想笑死我好继承我的负产吗¿¿¿")
                 return
         else:  # 未指定默认1
             self.num = 1
         # -----------------------------------------------
         if self.type in ["group", "temp"]:
+
             if not self.current_config[self.type]["setu"]:
-                return await self.send(msg=MessageSegment.text("啊嘞啊嘞，涩图还没开呢~"))
+                return await self.power.send(msg="啊嘞啊嘞，涩图还没开呢~")
             if self.num > self.current_config[self.type]["max_num"]:
-                return await self.send(msg=MessageSegment.text("要这么多涩图你怎么不冲死呢¿"))
+                return await self.power.send(msg="要这么多涩图你怎么不冲死呢¿")
             if self.r18:
                 self.setu_level = self.current_config[self.type]["setu_level"]
                 if self.setu_level < 2:
-                    await self.send(msg=MessageSegment.text("太涩了，你不能看哼~"))
+                    await self.power.send(msg="太涩了，你不能看哼~")
                     return
         elif self.type == "private":
             if self.r18:
                 self.setu_level = 2
             if self.current_config[self.type]["setu_level"] is vars():
                 self.setu_level = self.current_config[self.type]["setu_level"]
-
         await self.action()
-        # todo 总设置
 
     async def main(self):  # 判断消息类型给对应函数处理
         if self.type != "private":  # 群聊or临时会话
@@ -242,14 +244,15 @@ class Setu:
             if data:  # 查询group数据库数据
                 self.current_config = data
             else:
-                await db.group_build(self.message["group_id"])
+                await self.power.group_build(self.message["group_id"])
                 self.current_config = group_config.search(Q["group_id"] == self.message["group_id"])[0]
-                logger.info(self.current_config)
             await self.processing_and_inspect()
         else:  # 好友会话
             data = friend_config.search(Q["user_id"] == self.message["user_id"])
             if data:  # 该QQ如果自定义过
                 self.current_config = data
+            else:
+                self.current_config = {}
             # 如果没有自定义 就是默认行为
             await self.processing_and_inspect()
 
@@ -259,6 +262,6 @@ class Setu:
                 t = eval("self.api_{}".format(i))
                 await t()
         if self.num != 0:
-            await self.send(msg=MessageSegment.text('淦！你的xp好奇怪啊！'))
+            await self.power.send(msg="淦！你的xp好奇怪啊！")
             return
         return

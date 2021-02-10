@@ -10,8 +10,11 @@ from nonebot import on_message, on_regex
 from nonebot.adapters.cqhttp import Bot, Event, Message, MessageSegment
 from loguru import logger
 from nonebot import on_command
+from nonebot.typing import T_State
+
 from .data_source import Setu
 from .config import Config
+from .model import Power
 from nonebot.rule import to_me, regex
 from nonebot.permission import Permission
 
@@ -24,11 +27,9 @@ try:
 except FileExistsError:
     logger.info("数据库目录已存在")
 # -----------------------------------------------------------------
-setu = on_regex(pattern='来(.*?)[点丶份张幅](.*?)的?(|r18)[色瑟涩🐍][图圖🤮]')
-
-
-async def withdraw(bot: Bot, event: Event, state: dict):  # 撤回
-    pass
+setu = on_regex(pattern='来(.*?)[点丶份张幅](.*?)的?(|r18)[色瑟涩🐍][图圖🤮]', priority=1)
+db = on_command("", priority=2)
+update_all = on_command("更新所有数据")
 
 
 @setu.receive()
@@ -40,8 +41,21 @@ async def message_receive(bot: Bot, event: Event, state: dict):  # 涩图调用
 
 
 # -----------------------------------------------------------------
+
+@db.handle()
 async def db_update(bot: Bot, event: Event, state: dict):  # 数据库
-    pass
+    args = str(event.get_message()).strip().split()
+    state["key"] = args
+    await Power(bot, event).change(state)
+    logger.info(bot.__dict__)
+    logger.info(event.dict())
+    logger.info(state)
+    # asyncio.run(Power().update_all())
+
+
+@update_all.handle()
+async def update(bot: Bot, event: Event, state: dict):
+    await Power(bot, event).update_all()
 
 
 """
