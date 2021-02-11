@@ -3,20 +3,18 @@ import random
 import re
 
 import httpx
-import nonebot
 from loguru import logger
 from nonebot.adapters.cqhttp import MessageSegment, Message, Bot, Event
 from tinydb import Query
 
-from .config import Config
+from .config import hso_config
 from .model import group_config, friend_config, Power, status
 
 # -------------------------------------------------------
 #                       Setu 类包装
 # -------------------------------------------------------
 # todo tag_db,status 用于统计
-global_config = nonebot.get_driver().config
-hso_config = Config(**global_config.dict())  # 载入配置
+
 Q = Query()
 
 
@@ -119,7 +117,7 @@ class Setu:
                                                author_id=data["uid"],
                                                url_original="https://i.pixiv.cat/img-original/img/{}".format(
                                                    re.findall("img/(.*)", data["url"])[0].replace("_master1200", "")))
-                    id = await self.send(file=data["url"], msg=msg,at=self.current_config[self.type]["at"])
+                    id = await self.send(file=data["url"], msg=msg, at=self.current_config[self.type]["at"])
                     get_num += 1
                     self.num -= 1
                     self.del_list.append(id['message_id'])  # 撤回表单

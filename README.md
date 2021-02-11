@@ -1,7 +1,7 @@
 # hso
 基于go-cqhttp nonebot2的setu 插件
 # TODO
-- [X] 发送setu(无需命令符)
+- [X] 发送setu(无需命令符)(默认关闭)
   - 正则匹配`来(.*?)[点丶份张幅](.*?)的?(|r18)[色瑟涩🐍][图圖🤮]`
 - setu api:
   - [x] lolicon.app
@@ -26,6 +26,7 @@
 # 配置文件
 ```
 api1=True # 色图库是否开启 api1=lolicon
+ps:如果自己添加api后别忘了在config.py中Config添加api对应开关
 PRIORITY=[1]  #　色图库(元组)优先级:api0 > api1  如果是[1,0]即为api1 > api0
 LOLICON_KEY=none  # lolicon.app 的Key，前往https://api.lolicon.app申请
 Friend=True  #

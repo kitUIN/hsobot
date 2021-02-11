@@ -1,4 +1,6 @@
+from loguru import logger
 from pydantic import BaseSettings
+import nonebot
 
 
 # -----------
@@ -14,3 +16,8 @@ class Config(BaseSettings):
 
     class Config:
         extra = "ignore"
+
+
+global_config = nonebot.get_driver().config
+hso_config = Config(**global_config.dict())  # 载入配置
+logger.info(hso_config)

@@ -1,3 +1,5 @@
+import pathlib
+
 import httpx
 from loguru import logger
 from nonebot.adapters.cqhttp import MessageSegment, Message, Bot, Event
@@ -5,9 +7,15 @@ from nonebot.typing import T_State
 from tinydb import TinyDB, Query
 from tinydb.storages import MemoryStorage
 
+from .config import hso_config
 # ---------
 # 公用数据库
 # ---------
+try:
+    pathlib.Path("db").mkdir()
+    logger.success("数据库创建成功")
+except FileExistsError:
+    logger.info("数据库目录已存在")
 group_config = TinyDB("./db/group_config.json")
 friend_config = TinyDB("./db/friend_config.json")
 tag_db = TinyDB("./db/tag.json")
@@ -120,15 +128,12 @@ class Power:
         "at"\r\n
         """
         key = state["key"]
-        data = dict()
         mold = event.dict()["message_type"]
         if mold == "group":
             config = group_config.search(Q["group_id"] == event.dict()['group_id'])[0]
             admins = config["admins"]
             admins.append(config["owner"])
-            logger.info(event.get_user_id())
-            logger.info(admins)
-            if int(event.get_user_id()) in admins:
+            if int(event.get_user_id()) in admins or event.get_user_id() in hso_config.superusers:
                 data = config
                 before = str(config["group"][key[1]])
                 if key[0] == "开启":

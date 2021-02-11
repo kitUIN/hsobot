@@ -9,6 +9,9 @@ license = "MIT Lincense"
 python = "^3.7"
 tinydb = "^4.2.0"
 nonebot2 = "^2.0.0a9.post1"
+pydantic = "^1.7.3"
+httpx ="^0.16.1"
+
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
