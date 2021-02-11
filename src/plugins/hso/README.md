@@ -23,7 +23,13 @@
     setu撤回开关
   - 修改 top            
     色图最大上限(0为无限)
-
+# 配置文件
+```
+api1=True # 色图库是否开启 api1=lolicon
+PRIORITY=[1]  #　色图库(元组)优先级:api0 > api1  如果是[1,0]即为api1 > api0
+LOLICON_KEY=none  # lolicon.app 的Key，前往https://api.lolicon.app申请
+Friend=True  #
+```
 # 鸣谢
 [go-cqhttp](https://github.com/Mrs4s/go-cqhttp)  
 [nonebot2](https://github.com/nonebot/nonebot2)  

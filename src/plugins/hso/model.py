@@ -126,9 +126,11 @@ class Power:
             config = group_config.search(Q["group_id"] == event.dict()['group_id'])[0]
             admins = config["admins"]
             admins.append(config["owner"])
-            if event.get_user_id in admins:
+            logger.info(event.get_user_id())
+            logger.info(admins)
+            if int(event.get_user_id()) in admins:
                 data = config
-                before = str(config[key[1]])
+                before = str(config["group"][key[1]])
                 if key[0] == "开启":
                     data["group"][key[1]] = True
                     after = "True"

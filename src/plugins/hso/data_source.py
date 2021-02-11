@@ -17,7 +17,6 @@ from .model import group_config, friend_config, Power, status
 # todo tag_db,status 用于统计
 global_config = nonebot.get_driver().config
 hso_config = Config(**global_config.dict())  # 载入配置
-logger.info(hso_config)
 Q = Query()
 
 
@@ -91,7 +90,7 @@ class Setu:
             return data
 
     async def api_1(self):  # https://api.lolicon.app/
-        if not self.config.api1 or self.num < 1:  # 兼容api0
+        if not self.config.api1 or self.num < 1:
             return
         if self.setu_level == 1:
             r18 = 0
@@ -111,20 +110,16 @@ class Setu:
             params["num"] = 10
         if len(self.tag) != 1 or (len(self.tag[0]) != 0 and not self.tag[0].isspace()):  # 如果tag不为空(字符串字数不为零且不为空)
             params["keyword"] = self.tag
-        try:
-            async with httpx.AsyncClient() as client:
-                res = await client.get(url, params=params, timeout=5)
-                setu_data = res.json()
-        except Exception as e:
-            logger.warning("api1 boom~ :{}".format(e))
-        else:
+        async with httpx.AsyncClient() as client:
+            res = await client.get(url, params=params, timeout=5)
+            setu_data = res.json()
             if res.status_code == 200:
                 for data in setu_data["data"]:
-                    msg = await self.build_msg(api=1, title=data["title"], uid=data["pid"], author=data["author"],
+                    msg = await self.build_msg(api=0, title=data["title"], uid=data["pid"], author=data["author"],
                                                author_id=data["uid"],
                                                url_original="https://i.pixiv.cat/img-original/img/{}".format(
                                                    re.findall("img/(.*)", data["url"])[0].replace("_master1200", "")))
-                    id = await self.send(file=data["url"], msg=msg)
+                    id = await self.send(file=data["url"], msg=msg,at=self.current_config[self.type]["at"])
                     get_num += 1
                     self.num -= 1
                     self.del_list.append(id['message_id'])  # 撤回表单
@@ -215,7 +210,13 @@ class Setu:
                     return
             if self.type == "group":  # 统计调用数量
                 info = status.search(Q["group_id"] == self.message["group_id"])
-                now_num = info[0]["num"] + self.num
+                if info:
+                    info = info[0]
+                else:
+                    info = self.data_build("status")
+                    status.insert(info)
+                    info = status.search(Q["group_id"] == self.message["group_id"])[0]
+                now_num = info["num"] + self.num
                 if self.current_config["group"]["top"] >= now_num:  # 上限判断
                     self.call = await self.send(
                         msg="当天已调用：{}\r\n群剩余调用：{}".format(str(now_num),
@@ -225,16 +226,8 @@ class Setu:
                 else:
                     return await self.send(
                         msg="当天已调用：{}\r\n再调用{}超过上限了呢~".format(str(info[0]["num"]), str(self.num)))
-                if info:
-                    info = info[0]
-                    info["num"] += self.num
-                    logger.info(info["num"])
-                    status.update(info, Q["group_id"] == self.message["group_id"])
-                else:
-                    info = self.data_build("status")
-                    info["num"] += self.num
-                    logger.info(info["num"])
-                    status.insert(info)
+                info["num"] += self.num
+                status.update(info, Q["group_id"] == self.message["group_id"])
 
         elif self.type == "private":
             if self.r18:
