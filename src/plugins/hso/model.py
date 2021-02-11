@@ -1,3 +1,4 @@
+import httpx
 from loguru import logger
 from nonebot.adapters.cqhttp import MessageSegment, Message, Bot, Event
 from nonebot.typing import T_State
@@ -16,22 +17,25 @@ db_tmp = TinyDB(storage=MemoryStorage)
 Q = Query()
 
 
-class Power:
-    def __init__(self, bot: Bot, event: Event):
-        self.event = event
-        self.bot = bot
+class Send:
+    def __init__(self):
+        self.url = "http://127.0.0.1:5700/"
 
-    async def send(self, file: str = "", msg: str = "", at: bool = False):  # 发送图片或文字
-        # if file[1:4] != "http" and file[1:4] != "":  # 本地文件
-        #    file = "file:///" + file
-        if at:
-            return await self.bot.send(event=self.event,
-                                       message=Message(
-                                           [MessageSegment.image(file=file),
-                                            MessageSegment.text(msg), MessageSegment.at(self.event.dict()["user_id"])]))
-        else:
-            return await self.bot.send(event=self.event,
-                                       message=Message([MessageSegment.image(file=file), MessageSegment.text(msg)]))
+    async def get_group_list(self):  # 获得群列表
+        async with httpx.AsyncClient() as client:
+            res = await client.post(self.url + "get_group_list")
+            return res.json()["data"]
+
+    async def get_group_member_list(self, group_id):  # 获得群成员列表
+        async with httpx.AsyncClient() as client:
+            res = await client.post(self.url + "get_group_member_list", params={"group_id": group_id})
+            return res.json()["data"]
+
+
+send = Send()
+
+
+class Power:
 
     @staticmethod
     def _group_default():
@@ -49,7 +53,8 @@ class Power:
                       "r18": False,
                       "max_num": 3,
                       "revoke": True,
-                      "at": True},
+                      "at": True,
+                      "top": 10},
             "temp": {"setu_level": 3,
                      "original": False,
                      "setu": True,
@@ -78,7 +83,7 @@ class Power:
         # data = group_config.search(Q["group_id"] == group_id)
         # if data:
         #    group = data
-        member = await self.bot.get_group_member_list(group_id=group_id)
+        member = await send.get_group_member_list(group_id=group_id)
         for i in member:
             if i["role"] == "admin":
                 admin.append(i["user_id"])
@@ -91,14 +96,15 @@ class Power:
 
     async def update_all(self):
         logger.info("开始更新所有群数据~")
-        data = await self.bot.get_group_list()
+        data = await send.get_group_list()
         group_ids = [x["group_id"] for x in data]
         for group_id in group_ids:
             await self.group_build(group_id)
         logger.success("更新群信息成功~")
         return
 
-    async def change(self, state: T_State):
+    @staticmethod
+    async def change(bot: Bot, event: Event, state: T_State):
         """修改配置\r\n
         type:\r\n
         group\r\n
@@ -114,23 +120,32 @@ class Power:
         """
         key = state["key"]
         data = dict()
-        mold = self.event.dict()["message_type"]
+        mold = event.dict()["message_type"]
         if mold == "group":
-
-            config = group_config.search(Q["group_id"] == self.event.dict()['group_id'])[0]["group"]
-            data["group"] = config
-            before = str(config[key[1]])
-            if key[0] == "开启":
-                data["group"][key[1]] = True
-                after = "True"
-            elif key[0] == "关闭":
-                data["group"][key[1]] = False
-                after = "False"
+            config = group_config.search(Q["group_id"] == event.dict()['group_id'])[0]
+            admins = config["admins"]
+            admins.append(config["owner"])
+            if event.get_user_id in admins:
+                data = config
+                before = str(config[key[1]])
+                if key[0] == "开启":
+                    data["group"][key[1]] = True
+                    after = "True"
+                elif key[0] == "关闭":
+                    data["group"][key[1]] = False
+                    after = "False"
+                else:
+                    try:
+                        data["group"][key[1]] = int(key[2])
+                    except:
+                        data["group"][key[1]] = key[2]
+                    after = key[2]
+                group_config.update(data, Q["group_id"] == event.dict()['group_id'])
+                return await bot.send(event=event,
+                                      message=Message(MessageSegment.text('{}：{}-->{}'.format(key[1], before, after))))
             else:
-                data["group"][key[1]] = key[2]
-                after = key[2]
-            group_config.update(data, Q["group_id"] == self.event.dict()['group_id'])
+                return await bot.send(event=event,
+                                      message=Message(MessageSegment.text('¿没权限还玩🐎¿')))
 
-            return await self.send('{}-->{}'.format(before, after))
         elif mold == 'private':
             pass  # todo
