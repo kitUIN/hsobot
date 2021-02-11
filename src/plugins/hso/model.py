@@ -45,7 +45,8 @@ class Power:
         setu  色图功能开关
         r18 是否开启r18
         max_num 一次最多数量
-        revoke 撤回消息延时(0为不撤回)"""
+        revoke 撤回消息延时(0为不撤回)
+        top 色图最大上限(0为无限)"""
         data = {
             "group": {"setu_level": 1,
                       "original": False,
@@ -54,7 +55,7 @@ class Power:
                       "max_num": 3,
                       "revoke": True,
                       "at": True,
-                      "top": 10},
+                      "top": 300},
             "temp": {"setu_level": 3,
                      "original": False,
                      "setu": True,
