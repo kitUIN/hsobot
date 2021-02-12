@@ -15,13 +15,13 @@
     setu功能开关
   - 开启/关闭 r18        
     是否开启r18
-  - 修改 setu_level      
+  - 开启/关闭 revoke         
+    setu撤回开关  
+  - 修改 setu_level 1      
     默认等级 0:正常 1:性感 2:色情 3:All
-  - 修改 max_num        
-    一次最多数量
-  - 修改 revoke         
-    setu撤回开关
-  - 修改 top            
+  - 修改 max_num  3      
+    一次最多数
+  - 修改 top 0           
     色图最大上限(0为无限)
 # 配置文件
 ```

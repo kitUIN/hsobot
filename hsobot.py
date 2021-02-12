@@ -7,7 +7,6 @@ from tinydb import TinyDB
 from tinydb.storages import MemoryStorage
 
 nonebot.init()
-nonebot.load_builtin_plugins()
 nonebot.load_plugins("src/plugins")
 app = nonebot.get_asgi()
 driver = nonebot.get_driver()
